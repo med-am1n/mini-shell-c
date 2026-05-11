@@ -62,7 +62,7 @@ int main()
         return 0;
     }
 
-    if (strcmp(args[0], "cd") == 0)
+    else if (strcmp(args[0], "cd") == 0)
     {
         const char *path = args[1] ? args[1] : getenv("HOME");
         if (path == NULL)
@@ -75,6 +75,22 @@ int main()
             {
                 perror("cd");
             }
+        }
+    }
+
+    else
+    {
+        pid_t pid = fork();
+
+        if (pid == 0)
+        {
+            execvp(args[0], args);
+            perror("execvp");
+            exit(1);
+        }
+        else
+        {
+            wait(NULL);
         }
     }
 
