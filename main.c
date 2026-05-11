@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <sys/wait.h>
 
 #define MAX_ARGS 64
 
@@ -107,6 +109,61 @@ void handle_pipe(char *line)
         free_args(right_args);
     }
 }
+
+void handle_redirection(char **args)
+{
+    for (int i = 0; args[i] != NULL; i++)
+    {
+        // OUTPUT REDIRECTION >
+        if (strcmp(args[i], ">") == 0)
+        {
+            int fd = open(args[i + 1], O_WRONLY | O_CREAT | O_TRUNC, 0644);
+            if (fd < 0)
+            {
+                perror("open");
+                exit(1);
+            }
+
+            dup2(fd, STDOUT_FILENO);
+            close(fd);
+
+            args[i] = NULL; // terminate command
+        }
+
+        // APPEND >>
+        else if (strcmp(args[i], ">>") == 0)
+        {
+            int fd = open(args[i + 1], O_WRONLY | O_CREAT | O_APPEND, 0644);
+            if (fd < 0)
+            {
+                perror("open");
+                exit(1);
+            }
+
+            dup2(fd, STDOUT_FILENO);
+            close(fd);
+
+            args[i] = NULL;
+        }
+
+        // INPUT REDIRECTION <
+        else if (strcmp(args[i], "<") == 0)
+        {
+            int fd = open(args[i + 1], O_RDONLY);
+            if (fd < 0)
+            {
+                perror("open");
+                exit(1);
+            }
+
+            dup2(fd, STDIN_FILENO);
+            close(fd);
+
+            args[i] = NULL;
+        }
+    }
+}
+
 int main()
 {
     char input[1024];
@@ -163,6 +220,8 @@ int main()
 
             if (pid == 0)
             {
+                handle_redirection(args);
+
                 execvp(args[0], args);
                 perror("execvp");
                 exit(1);
