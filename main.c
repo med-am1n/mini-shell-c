@@ -37,6 +37,74 @@ void free_args(char **args)
     free(args);
 }
 
+void handle_pipe(char *line)
+{
+    char *pipe_pos = strchr(line, '|');
+
+    if (pipe_pos != NULL)
+    {
+        *pipe_pos = '\0'; // split string into two parts
+
+        char *left = line;
+        char *right = pipe_pos + 1;
+
+        char **left_args = tokenize(left);
+        char **right_args = tokenize(right);
+
+        // create a pipe with two file descriptors: fd[0] for reading, fd[1] for writing
+        int fd[2];
+
+        if (pipe(fd) == -1)
+        {
+            perror("pipe");
+            return;
+        }
+
+        pid_t pid1 = fork();
+
+        if (pid1 == 0)
+        {
+            // LEFT side → writes to pipe
+            // redirect stdout to the write end of the pipe
+            // output is no longer going to the terminal, but to the pipe buffer
+            dup2(fd[1], STDOUT_FILENO);
+
+            close(fd[0]);
+            close(fd[1]);
+
+            execvp(left_args[0], left_args);
+            perror("execvp left failed");
+            exit(1);
+        }
+
+        pid_t pid2 = fork();
+
+        if (pid2 == 0)
+        {
+            // RIGHT side → reads from pipe
+            // redirect stdin to the read end of the pipe
+            // input is no longer coming from keyboard, but from the pipe buffer
+            dup2(fd[0], STDIN_FILENO);
+
+            close(fd[0]);
+            close(fd[1]);
+
+            execvp(right_args[0], right_args);
+            perror("execvp right failed");
+            exit(1);
+        }
+
+        // Parent
+        close(fd[0]);
+        close(fd[1]);
+
+        waitpid(pid1, NULL, 0);
+        waitpid(pid2, NULL, 0);
+
+        free_args(left_args);
+        free_args(right_args);
+    }
+}
 int main()
 {
     char input[1024];
@@ -51,6 +119,14 @@ int main()
 
         input[strcspn(input, "\n")] = '\0';
         
+        // PIPE FIRST
+        if (strchr(input, '|') != NULL)
+        {
+            handle_pipe(input);
+            continue;
+        }
+
+        // NORMAL PATH
         char **args = tokenize(input);
 
         // for (int i = 0; args[i] != NULL; i++) {
