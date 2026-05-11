@@ -51,7 +51,9 @@ void handle_pipe(char *line)
         char **left_args = tokenize(left);
         char **right_args = tokenize(right);
 
-        // create a pipe with two file descriptors: fd[0] for reading, fd[1] for writing
+        // Pipe = kernel buffer that allows two processes to communicate with each other
+        // create a access points to that buffer with two file descriptors: fd[0] for reading, fd[1] for writing
+        // dup2() to redirect stdin/stdout to the pipe ends
         int fd[2];
 
         if (pipe(fd) == -1)
