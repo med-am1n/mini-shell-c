@@ -207,6 +207,8 @@ int main()
     char input[1024];
     while (1)
     {
+        int background = 0;
+
         printf("mini-shell> ");
 
         if (fgets(input, sizeof(input), stdin) == NULL)
@@ -215,7 +217,7 @@ int main()
         }
 
         input[strcspn(input, "\n")] = '\0';
-        
+
         // PIPE FIRST
         if (strchr(input, '|') != NULL)
         {
@@ -223,12 +225,24 @@ int main()
             continue;
         }
 
+        // BACKGROUND JOB
+        char *pos = strchr(input, '&');
+
+        if (pos != NULL)
+        {
+            background = 1;
+            *pos = '\0';
+        }
+
         // NORMAL PATH
         char **args = tokenize(input);
 
-        // for (int i = 0; args[i] != NULL; i++) {
-        //     printf("arg[%d] = %s\n", i, args[i]);
-        // }
+        // empty command
+        if (args[0] == NULL)
+        {
+            free_args(args);
+            continue;
+        }
 
         if (strcmp(args[0], "exit") == 0)
         {
@@ -266,10 +280,17 @@ int main()
             }
             else
             {
-                wait(NULL);
+                if (!background)
+                {
+                    waitpid(pid, NULL, 0);
+                }
+                else
+                {
+                    printf("[background pid %d]\n", pid);
+                }
             }
         }
-        // Free memory
+
         free_args(args);
     }
 
