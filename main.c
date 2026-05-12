@@ -202,6 +202,27 @@ char **split_pipes(char *line, int *count)
     return cmds;
 }
 
+
+void expand_variables(char **args)
+{
+    for (int i = 0; args[i] != NULL; i++)
+    {
+        // check if token starts with $
+        if (args[i][0] == '$')
+        {
+            char *value = getenv(args[i] + 1);
+
+            if (value != NULL)
+            {
+                free(args[i]);
+
+                args[i] = malloc(strlen(value) + 1);
+
+                strcpy(args[i], value);
+            }
+        }
+    }
+}
 int main()
 {
     char input[1024];
@@ -236,6 +257,7 @@ int main()
 
         // NORMAL PATH
         char **args = tokenize(input);
+        expand_variables(args);
 
         // empty command
         if (args[0] == NULL)
