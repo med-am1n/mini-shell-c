@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/wait.h>
+#include <signal.h>
 
 #define MAX_ARGS 64
 #define MAX_CMDS 16
@@ -225,6 +226,7 @@ void expand_variables(char **args)
 }
 int main()
 {
+    signal(SIGINT, SIG_IGN); // ignore Ctrl+C in the shell
     char input[1024];
     while (1)
     {
@@ -294,6 +296,7 @@ int main()
 
             if (pid == 0)
             {
+                signal(SIGINT, SIG_DFL); // restore default Ctrl+C behavior in child
                 handle_redirection(args);
 
                 execvp(args[0], args);
