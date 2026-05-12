@@ -41,87 +41,6 @@ void free_args(char **args)
     }
     free(args);
 }
-
-
-void handle_pipes(char *line)
-{
-    int cmd_count;
-
-    char **cmds = split_pipes(line, &cmd_count);
-
-    int prev_fd = -1;
-
-    for (int i = 0; i < cmd_count; i++)
-    {
-        // Pipe = kernel buffer that allows two processes to communicate with each other
-        // create a access points to that buffer with two file descriptors: fd[0] for reading, fd[1] for writing
-        int fd[2];
-
-        // create pipe except for last command
-        if (i < cmd_count - 1)
-        {
-            if (pipe(fd) == -1)
-            {
-                perror("pipe");
-                return;
-            }
-        }
-
-        pid_t pid = fork();
-
-        if (pid == 0)
-        {
-            // INPUT from previous pipe
-            if (prev_fd != -1)
-            {
-                // redirect stdin to the read end of the pipe
-                // input is no longer coming from keyboard, but from the pipe buffer
-                dup2(prev_fd, STDIN_FILENO);
-                close(prev_fd);
-            }
-
-            // OUTPUT to next pipe
-            if (i < cmd_count - 1)
-            {
-
-                // redirect stdout to the write end of the pipe
-                // output is no longer going to the terminal, but to the pipe buffer
-                dup2(fd[1], STDOUT_FILENO);
-
-                close(fd[0]);
-                close(fd[1]);
-            }
-
-            char **args = tokenize(cmds[i]);
-
-            execvp(args[0], args);
-
-            perror("execvp");
-            exit(1);
-        }
-
-        // parent cleanup
-        if (prev_fd != -1)
-        {
-            close(prev_fd);
-        }
-
-        if (i < cmd_count - 1)
-        {
-            close(fd[1]);
-            prev_fd = fd[0];
-        }
-    }
-
-    // wait all children
-    for (int i = 0; i < cmd_count; i++)
-    {
-        wait(NULL);
-    }
-
-    free(cmds);
-}
-
 void handle_redirection(char **args)
 {
     for (int i = 0; args[i] != NULL; i++)
@@ -175,6 +94,89 @@ void handle_redirection(char **args)
         }
     }
 }
+
+void handle_pipes(char *line)
+{
+    int cmd_count;
+
+    char **cmds = split_pipes(line, &cmd_count);
+
+    int prev_fd = -1;
+
+    for (int i = 0; i < cmd_count; i++)
+    {
+        // Pipe = kernel buffer that allows two processes to communicate with each other
+        // create a access points to that buffer with two file descriptors: fd[0] for reading, fd[1] for writing
+        int fd[2];
+
+        // create pipe except for last command
+        if (i < cmd_count - 1)
+        {
+            if (pipe(fd) == -1)
+            {
+                perror("pipe");
+                return;
+            }
+        }
+
+        pid_t pid = fork();
+
+        if (pid == 0)
+        {
+            // INPUT from previous pipe
+            if (prev_fd != -1)
+            {
+                // redirect stdin to the read end of the pipe
+                // input is no longer coming from keyboard, but from the pipe buffer
+                dup2(prev_fd, STDIN_FILENO);
+                close(prev_fd);
+            }
+
+            // OUTPUT to next pipe
+            if (i < cmd_count - 1)
+            {
+
+                // redirect stdout to the write end of the pipe
+                // output is no longer going to the terminal, but to the pipe buffer
+                dup2(fd[1], STDOUT_FILENO);
+
+                close(fd[0]);
+                close(fd[1]);
+            }
+
+            char **args = tokenize(cmds[i]);
+            
+            handle_redirection(args);
+
+            execvp(args[0], args);
+
+            perror("execvp");
+            exit(1);
+        }
+
+        // parent cleanup
+        if (prev_fd != -1)
+        {
+            close(prev_fd);
+        }
+
+        if (i < cmd_count - 1)
+        {
+            close(fd[1]);
+            prev_fd = fd[0];
+        }
+    }
+
+    // wait all children
+    for (int i = 0; i < cmd_count; i++)
+    {
+        wait(NULL);
+    }
+
+    free(cmds);
+}
+
+
 
 char **split_pipes(char *line, int *count)
 {
