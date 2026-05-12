@@ -6,6 +6,9 @@
 #include <sys/wait.h>
 
 #define MAX_ARGS 64
+#define MAX_CMDS 16
+
+char **split_pipes(char *line, int *count);
 
 char **tokenize(char *line)
 {
@@ -39,75 +42,84 @@ void free_args(char **args)
     free(args);
 }
 
-void handle_pipe(char *line)
+
+void handle_pipes(char *line)
 {
-    char *pipe_pos = strchr(line, '|');
+    int cmd_count;
 
-    if (pipe_pos != NULL)
+    char **cmds = split_pipes(line, &cmd_count);
+
+    int prev_fd = -1;
+
+    for (int i = 0; i < cmd_count; i++)
     {
-        *pipe_pos = '\0'; // split string into two parts
-
-        char *left = line;
-        char *right = pipe_pos + 1;
-
-        char **left_args = tokenize(left);
-        char **right_args = tokenize(right);
-
         // Pipe = kernel buffer that allows two processes to communicate with each other
         // create a access points to that buffer with two file descriptors: fd[0] for reading, fd[1] for writing
-        // dup2() to redirect stdin/stdout to the pipe ends
         int fd[2];
 
-        if (pipe(fd) == -1)
+        // create pipe except for last command
+        if (i < cmd_count - 1)
         {
-            perror("pipe");
-            return;
+            if (pipe(fd) == -1)
+            {
+                perror("pipe");
+                return;
+            }
         }
 
-        pid_t pid1 = fork();
+        pid_t pid = fork();
 
-        if (pid1 == 0)
+        if (pid == 0)
         {
-            // LEFT side → writes to pipe
-            // redirect stdout to the write end of the pipe
-            // output is no longer going to the terminal, but to the pipe buffer
-            dup2(fd[1], STDOUT_FILENO);
+            // INPUT from previous pipe
+            if (prev_fd != -1)
+            {
+                // redirect stdin to the read end of the pipe
+                // input is no longer coming from keyboard, but from the pipe buffer
+                dup2(prev_fd, STDIN_FILENO);
+                close(prev_fd);
+            }
 
-            close(fd[0]);
-            close(fd[1]);
+            // OUTPUT to next pipe
+            if (i < cmd_count - 1)
+            {
 
-            execvp(left_args[0], left_args);
-            perror("execvp left failed");
+                // redirect stdout to the write end of the pipe
+                // output is no longer going to the terminal, but to the pipe buffer
+                dup2(fd[1], STDOUT_FILENO);
+
+                close(fd[0]);
+                close(fd[1]);
+            }
+
+            char **args = tokenize(cmds[i]);
+
+            execvp(args[0], args);
+
+            perror("execvp");
             exit(1);
         }
 
-        pid_t pid2 = fork();
-
-        if (pid2 == 0)
+        // parent cleanup
+        if (prev_fd != -1)
         {
-            // RIGHT side → reads from pipe
-            // redirect stdin to the read end of the pipe
-            // input is no longer coming from keyboard, but from the pipe buffer
-            dup2(fd[0], STDIN_FILENO);
-
-            close(fd[0]);
-            close(fd[1]);
-
-            execvp(right_args[0], right_args);
-            perror("execvp right failed");
-            exit(1);
+            close(prev_fd);
         }
 
-        // Parent
-        close(fd[0]);
-        close(fd[1]);
-
-        waitpid(pid1, NULL, 0);
-        waitpid(pid2, NULL, 0);
-
-        free_args(left_args);
-        free_args(right_args);
+        if (i < cmd_count - 1)
+        {
+            close(fd[1]);
+            prev_fd = fd[0];
+        }
     }
+
+    // wait all children
+    for (int i = 0; i < cmd_count; i++)
+    {
+        wait(NULL);
+    }
+
+    free(cmds);
 }
 
 void handle_redirection(char **args)
@@ -164,6 +176,30 @@ void handle_redirection(char **args)
     }
 }
 
+char **split_pipes(char *line, int *count)
+{
+    char **cmds = malloc(MAX_CMDS * sizeof(char *));
+    char *cmd;
+    int i = 0;
+
+    cmd = strtok(line, "|");
+
+    while (cmd != NULL && i < MAX_CMDS - 1)
+    {
+        while (*cmd == ' ')
+            cmd++; // trim leading spaces
+
+        cmds[i++] = cmd;
+
+        cmd = strtok(NULL, "|");
+    }
+
+    cmds[i] = NULL;
+    *count = i;
+
+    return cmds;
+}
+
 int main()
 {
     char input[1024];
@@ -181,7 +217,7 @@ int main()
         // PIPE FIRST
         if (strchr(input, '|') != NULL)
         {
-            handle_pipe(input);
+            handle_pipes(input);
             continue;
         }
 
