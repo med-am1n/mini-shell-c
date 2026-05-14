@@ -8,6 +8,10 @@
 
 #define MAX_ARGS 64
 #define MAX_CMDS 16
+#define MAX_HISTORY 100
+
+char *history[MAX_HISTORY];
+int history_count = 0;
 
 char **split_pipes(char *line, int *count);
 
@@ -146,7 +150,7 @@ void handle_pipes(char *line)
             }
 
             char **args = tokenize(cmds[i]);
-            
+
             handle_redirection(args);
 
             execvp(args[0], args);
@@ -177,8 +181,6 @@ void handle_pipes(char *line)
     free(cmds);
 }
 
-
-
 char **split_pipes(char *line, int *count)
 {
     char **cmds = malloc(MAX_CMDS * sizeof(char *));
@@ -203,7 +205,6 @@ char **split_pipes(char *line, int *count)
     return cmds;
 }
 
-
 void expand_variables(char **args)
 {
     for (int i = 0; args[i] != NULL; i++)
@@ -224,6 +225,16 @@ void expand_variables(char **args)
         }
     }
 }
+
+void add_history(const char *cmd)
+{
+    if (history_count < MAX_HISTORY)
+    {
+        history[history_count] = strdup(cmd);
+        history_count++;
+    }
+}
+
 int main()
 {
     signal(SIGINT, SIG_IGN); // ignore Ctrl+C in the shell
@@ -240,6 +251,12 @@ int main()
         }
 
         input[strcspn(input, "\n")] = '\0';
+
+        if (strlen(input) > 0)
+        {   
+            // avoid empty strings
+            add_history(input);
+        }
 
         // PIPE FIRST
         if (strchr(input, '|') != NULL)
@@ -271,6 +288,10 @@ int main()
         if (strcmp(args[0], "exit") == 0)
         {
             free_args(args);
+            for (int i = 0; i < history_count; i++)
+            {
+                free(history[i]);
+            }
             return 0;
         }
 
@@ -287,6 +308,13 @@ int main()
                 {
                     perror("cd");
                 }
+            }
+        }
+        else if (strcmp(args[0], "history") == 0)
+        {
+            for (int i = 0; i < history_count; i++)
+            {
+                printf("%d  %s\n", i + 1, history[i]);
             }
         }
 
